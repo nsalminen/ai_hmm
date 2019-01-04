@@ -302,10 +302,6 @@
 		},
 		{
 			"round": "40",
-			"agent1": "Strawberry,Water,Almonds,Almonds"
-		},
-		{
-			"round": "41",
 			"accept": "agent1"
 		}
 	]
