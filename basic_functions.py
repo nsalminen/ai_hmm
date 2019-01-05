@@ -2,16 +2,19 @@
 """
 Created on Sat Dec 29 22:05:40 2018
 
-@author: Emma 
+@author: Emma
 """
 
 import json
 import os
 import numpy as np
 import pandas as pd
+import sys, getopt
 
 # the names of all the issues in the domain for later use
 issues = ["Fruit", "Juice", "Topping1", "Topping2"]
+
+possible_strategies = ["Conceder", "Hard-headed", "Tit-for-Tat", "Random"]
 
 transition_model = pd.DataFrame({'St-1': ["Sc", "Sh", "St", "Sr"],
                                  'P(Sc)': [1, 0, 0, 0],
@@ -76,51 +79,52 @@ def return_strategies(filename):
     return strategies
 
 
-# get all the logs
-logs = os.listdir("./logs/training_logs")
+def train():
+    global pref1, pref2
+    # get all the logs
+    logs = os.listdir("./logs/training_logs")
+    # open the first one
+    for log in logs:
+        with open(("./logs/training_logs/%s" % log), "r") as read_file:
+            data = json.load(read_file)
 
-# open the first one
-for log in logs:
-    with open(("./logs/training_logs/%s" % log), "r") as read_file:
-        data = json.load(read_file)
+        s1, s2 = return_strategies(log)
+        # get the preference profiles of both agents
+        pref1 = data["Utility1"]
+        pref2 = data["Utility2"]
 
-    s1, s2 = return_strategies(log)
-    # get the preference profiles of both agents
-    pref1 = data["Utility1"]
-    pref2 = data["Utility2"]
+        # moves agent 1 is making
+        for i in range(len(data["bids"])):
+            if i > 0:
+                if "accept" in data["bids"][i]:
+                    break
+                current_round = data["bids"][i]
+                prev_round = data["bids"][i - 1]
+                move = (type_of_move(current_round["agent1"], prev_round["agent1"],
+                                     pref1, pref2))
+                move_count.loc[s1, move] += 1
 
-    # moves agent 1 is making
-    for i in range(len(data["bids"])):
-        if i > 0:
-            if "accept" in data["bids"][i]:
-                break
-            current_round = data["bids"][i]
-            prev_round = data["bids"][i - 1]
-            move = (type_of_move(current_round["agent1"], prev_round["agent1"],
-                                 pref1, pref2))
-            move_count.loc[s1, move] += 1
+        # moves agent 2 is making
+        for i in range(len(data["bids"])):
+            if i > 0:
+                if "accept" in data["bids"][i]:
+                    break
+                current_round = data["bids"][i]
+                prev_round = data["bids"][i - 1]
 
-    # moves agent 2 is making
-    for i in range(len(data["bids"])):
-        if i > 0:
-            if "accept" in data["bids"][i]:
-                break
-            current_round = data["bids"][i]
-            prev_round = data["bids"][i - 1]
+                move = (type_of_move(current_round["agent2"], prev_round["agent2"],
+                                     pref2, pref1))
+                move_count.loc[s2, move] += 1
+    tempSc = move_count.loc["conceder"] / move_count.loc["conceder"].sum()
+    tempSh = move_count.loc["hardheaded"] / move_count.loc["hardheaded"].sum()
+    tempSt = move_count.loc["tft"] / move_count.loc["tft"].sum()
+    tempSr = move_count.loc["random"] / move_count.loc["random"].sum()
+    sensor_model.loc["Sc"] = tempSc.values
+    sensor_model.loc["Sh"] = tempSh.values
+    sensor_model.loc["St"] = tempSt.values
+    sensor_model.loc["Sr"] = tempSr.values
 
-            move = (type_of_move(current_round["agent2"], prev_round["agent2"],
-                                 pref2, pref1))
-            move_count.loc[s2, move] += 1
-
-tempSc = move_count.loc["conceder"] / move_count.loc["conceder"].sum()
-tempSh = move_count.loc["hardheaded"] / move_count.loc["hardheaded"].sum()
-tempSt = move_count.loc["tft"] / move_count.loc["tft"].sum()
-tempSr = move_count.loc["random"] / move_count.loc["random"].sum()
-
-sensor_model.loc["Sc"] = tempSc.values
-sensor_model.loc["Sh"] = tempSh.values
-sensor_model.loc["St"] = tempSt.values
-sensor_model.loc["Sr"] = tempSr.values
+    sensor_model.to_csv("sensor_model.csv")
 
 
 def normalize_list(normalize_list):
@@ -136,6 +140,9 @@ def make_sensor_matrix(move_type):
 def forward_algorithm(data, i):
     current_round = data["bids"][i]
     prev_round = data["bids"][i - 1]
+
+    pref1 = data["Utility1"]
+    pref2 = data["Utility2"]
 
     move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
                           pref1, pref2))
@@ -155,6 +162,13 @@ def forward_algorithm(data, i):
 
 
 def test(file_name):
+    if not os.path.isfile("sensor_model.csv"):
+        print("No sensor model found, training first...")
+        train()
+    else:
+        global sensor_model
+        sensor_model = pd.read_csv("sensor_model.csv")
+
     with open(("./logs/test_logs/%s" % file_name), "r") as read_file:
         data = json.load(read_file)
 
@@ -164,7 +178,37 @@ def test(file_name):
         prediction1_norm = normalize_list(np.diag(prediction1))
         prediction2_norm = normalize_list(np.diag(prediction2))
 
-        print(prediction1_norm, prediction2_norm)
+        df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
+
+        print(df)
 
 
-test("test2.json")
+def usage():
+    print("usage: python3 hmm.py [--train | --test filename | --help]")
+
+
+def main():
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "ho:v", ["help", "train", "test="])
+    except getopt.GetoptError as err:
+        print(str(err))
+        usage()
+        sys.exit(2)
+    for o, a in opts:
+        if o == "--train":
+            print("Training...")
+            train()
+        elif o in ("-h", "--help"):
+            usage()
+            sys.exit()
+        elif o in "--test":
+            if os.path.isfile("./logs/test_logs/%s" % a):
+                test(a)
+            else:
+                print("Invalid file: " + a)
+        else:
+            assert False, "Unhandled option"
+
+
+if __name__ == "__main__":
+    main()
