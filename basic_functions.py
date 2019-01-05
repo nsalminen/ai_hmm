@@ -2,17 +2,16 @@
 """
 Created on Sat Dec 29 22:05:40 2018
 
-@author: Emma
+@author: Emma 
 """
 
 import json
 import os
+import numpy as np
 import pandas as pd
 
-
-#the names of all the issues in the domain for later use
+# the names of all the issues in the domain for later use
 issues = ["Fruit", "Juice", "Topping1", "Topping2"]
-
 
 transition_model = pd.DataFrame({'St-1': ["Sc", "Sh", "St", "Sr"],
                                  'P(Sc)': [1, 0, 0, 0],
@@ -20,28 +19,28 @@ transition_model = pd.DataFrame({'St-1': ["Sc", "Sh", "St", "Sr"],
                                  'P(St)': [0, 0, 1, 0],
                                  'P(Sr)': [0, 0, 0, 1]})
 
-transition_model.set_index('St-1', inplace = True)
+transition_model.set_index('St-1', inplace=True)
 
 sensor_model = pd.DataFrame({'St': ["Sc", "Sh", "St", "Sr"],
-                                 'P(Mc)': [0, 0, 0, 0],
-                                 'P(Mf)': [0, 0, 0, 0],
-                                 'P(Mu)': [0, 0, 0, 0],
-                                 'P(Ms)': [0, 0, 0, 0],
-                                 'P(Msi)': [0, 0, 0, 0]})
+                             'P(concession)': [0, 0, 0, 0],
+                             'P(fortunate)': [0, 0, 0, 0],
+                             'P(unfortunate)': [0, 0, 0, 0],
+                             'P(selfish)': [0, 0, 0, 0],
+                             'P(silent)': [0, 0, 0, 0]})
 
-sensor_model.set_index('St', inplace = True)
+sensor_model.set_index('St', inplace=True)
 
 move_count = pd.DataFrame({'Strategy': ["conceder", "hardheaded", "tft", "random"],
-                                 'concession': [0, 0, 0, 0],
-                                 'fortunate': [0, 0, 0, 0],
-                                 'unfortunate': [0, 0, 0, 0],
-                                 'selfish': [0, 0, 0, 0],
-                                 'silent': [0, 0, 0, 0]})
+                           'concession': [0, 0, 0, 0],
+                           'fortunate': [0, 0, 0, 0],
+                           'unfortunate': [0, 0, 0, 0],
+                           'selfish': [0, 0, 0, 0],
+                           'silent': [0, 0, 0, 0]})
 
-move_count.set_index('Strategy', inplace = True)
+move_count.set_index('Strategy', inplace=True)
 
 
-#a function that returns the utility of a certain bid given a preference profile
+# a function that returns the utility of a certain bid given a preference profile
 def calc_util(bid, pref):
     bids = bid.split(",")
     util = (pref[issues[0]][bids[0]] * pref[issues[0]]["weight"]
@@ -50,13 +49,14 @@ def calc_util(bid, pref):
             + pref[issues[3]][bids[3]] * pref[issues[3]]["weight"])
     return util
 
+
 def type_of_move(bid, prevbid, pref1, pref2):
     delta1 = calc_util(bid, pref1) - calc_util(prevbid, pref1)
     delta2 = calc_util(bid, pref2) - calc_util(prevbid, pref2)
-    
+
     if delta1 < 0 and delta2 >= 0:
         return "concession"
-    elif delta1  >= 0 and delta2 > 0:
+    elif delta1 >= 0 and delta2 > 0:
         return "fortunate"
     elif delta1 <= 0 and delta2 < 0:
         return "unfortunate"
@@ -66,65 +66,105 @@ def type_of_move(bid, prevbid, pref1, pref2):
         return "silent"
     else:
         return "ERROR"
-    
+
+
 def return_strategies(filename):
     useful, trash = filename.split(".")
-    strategies= useful.split("_")
+    strategies = useful.split("_")
     if not strategies[1].isalpha():
         strategies[1] = strategies[1][:-1]
     return strategies
 
-    
 
-#get all the logs
+# get all the logs
 logs = os.listdir("./logs/training_logs")
 
-#open the first one
+# open the first one
 for log in logs:
     with open(("./logs/training_logs/%s" % log), "r") as read_file:
         data = json.load(read_file)
-    
+
     s1, s2 = return_strategies(log)
-    #get the preference profiles of both agents
+    # get the preference profiles of both agents
     pref1 = data["Utility1"]
     pref2 = data["Utility2"]
-    
 
-    #moves agent 1 is making
+    # moves agent 1 is making
     for i in range(len(data["bids"])):
         if i > 0:
             if "accept" in data["bids"][i]:
-                break       
+                break
             current_round = data["bids"][i]
-            prev_round = data["bids"][i-1]
+            prev_round = data["bids"][i - 1]
             move = (type_of_move(current_round["agent1"], prev_round["agent1"],
-                              pref1, pref2))
+                                 pref1, pref2))
             move_count.loc[s1, move] += 1
-    
-    #moves agent 2 is making        
+
+    # moves agent 2 is making
     for i in range(len(data["bids"])):
         if i > 0:
             if "accept" in data["bids"][i]:
-                break       
+                break
             current_round = data["bids"][i]
-            prev_round = data["bids"][i-1]
+            prev_round = data["bids"][i - 1]
 
             move = (type_of_move(current_round["agent2"], prev_round["agent2"],
-                              pref2, pref1))
+                                 pref2, pref1))
             move_count.loc[s2, move] += 1
-            
 
-
-tempSc = move_count.loc["conceder"]/move_count.loc["conceder"].sum()
-tempSh = move_count.loc["hardheaded"]/move_count.loc["hardheaded"].sum()
-tempSt = move_count.loc["tft"]/move_count.loc["tft"].sum()
-tempSr = move_count.loc["random"]/move_count.loc["random"].sum()
+tempSc = move_count.loc["conceder"] / move_count.loc["conceder"].sum()
+tempSh = move_count.loc["hardheaded"] / move_count.loc["hardheaded"].sum()
+tempSt = move_count.loc["tft"] / move_count.loc["tft"].sum()
+tempSr = move_count.loc["random"] / move_count.loc["random"].sum()
 
 sensor_model.loc["Sc"] = tempSc.values
 sensor_model.loc["Sh"] = tempSh.values
-sensor_model.loc["St"] = tempSt.values 
-sensor_model.loc["Sr"] = tempSr.values    
+sensor_model.loc["St"] = tempSt.values
+sensor_model.loc["Sr"] = tempSr.values
 
-print(sensor_model)        
-    
-    
+
+def normalize_list(normalize_list):
+    return [float(i) / sum(normalize_list) for i in normalize_list]
+
+
+def make_sensor_matrix(move_type):
+    sensor_matrix = np.zeros((4, 4), float)
+    np.fill_diagonal(sensor_matrix, sensor_model[['P(' + move_type + ')']].values)
+    return sensor_matrix
+
+
+def forward_algorithm(data, i):
+    current_round = data["bids"][i]
+    prev_round = data["bids"][i - 1]
+
+    move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
+                          pref1, pref2))
+    move2 = (type_of_move(current_round["agent2"], prev_round["agent2"],
+                          pref2, pref1))
+
+    sensor_matrix1 = make_sensor_matrix(move1)
+    sensor_matrix2 = make_sensor_matrix(move2)
+
+    if i > 2:
+        fa_rec_result1, fa_rec_result2 = forward_algorithm(data, i - 1)
+        fa_result1 = np.linalg.multi_dot([sensor_matrix1, transition_model.values.transpose(), fa_rec_result1])
+        fa_result2 = np.linalg.multi_dot([sensor_matrix2, transition_model.values.transpose(), fa_rec_result2])
+        return fa_result1, fa_result2
+    else:
+        return np.identity(4), np.identity(4)
+
+
+def test(file_name):
+    with open(("./logs/test_logs/%s" % file_name), "r") as read_file:
+        data = json.load(read_file)
+
+        # Assuming the last bid entry is the "accepting" action
+        prediction1, prediction2 = forward_algorithm(data, len(data["bids"]) - 2)
+
+        prediction1_norm = normalize_list(np.diag(prediction1))
+        prediction2_norm = normalize_list(np.diag(prediction2))
+
+        print(prediction1_norm, prediction2_norm)
+
+
+test("test2.json")
