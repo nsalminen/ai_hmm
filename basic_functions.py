@@ -161,6 +161,58 @@ def forward_algorithm(data, i):
         return np.identity(4), np.identity(4)
 
 
+
+def forward_backward(data, t):
+    #get pref profiles
+    pref1 = data["Utility1"]
+    pref2 = data["Utility2"]
+    #init fv arrays per agent
+    sv_1 = []
+    sv_2 = []
+    fv_1 = []
+    fv_2 = []
+    for i in range(t):
+        fv_1.append(0)
+        fv_2.append(0)
+        sv_1.append(0)
+        sv_2.append(0)
+    #set prior
+    fv_1[0] = np.identity(4)
+    fv_2[0] = np.identity(4)
+    b_1 = np.ones(4)
+    b_2 = np.ones(4)
+
+    #fw loop (store fv along the way to use in bw)
+    for i in range(1, t):
+        current_round = data["bids"][i]
+        prev_round = data["bids"][i - 1]
+        move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
+                              pref1, pref2))
+        move2 = (type_of_move(current_round["agent2"], prev_round["agent2"],
+                              pref2, pref1))
+        sensor_matrix1 = make_sensor_matrix(move1)
+        sensor_matrix2 = make_sensor_matrix(move2)
+        fv_1[i] = np.linalg.multi_dot([sensor_matrix1, transition_model.values.transpose(), fv_1[i-1]])
+        fv_2[i] = np.linalg.multi_dot([sensor_matrix2, transition_model.values.transpose(), fv_2[i-1]])
+
+    #bw loop, store smootherd estimates in sv_[agent id]
+    for i in range(t-1, 0, -1):
+        sv_1[i] = fv_1[i] * b_1
+        sv_2[i] = fv_2[i] * b_2
+        current_round = data["bids"][i]
+        prev_round = data["bids"][i - 1]
+        move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
+                              pref1, pref2))
+        move2 = (type_of_move(current_round["agent2"], prev_round["agent2"],
+                              pref2, pref1))
+        sensor_matrix1 = make_sensor_matrix(move1)
+        sensor_matrix2 = make_sensor_matrix(move2)
+        b_1 = np.linalg.multi_dot([transition_model, sensor_matrix1, b_1])
+        b_2 = np.linalg.multi_dot([transition_model, sensor_matrix2, b_2])
+
+    return sv_1, sv_2
+
+
 def test(file_name):
     if not os.path.isfile("sensor_model.csv"):
         print("No sensor model found, training first...")
@@ -173,14 +225,29 @@ def test(file_name):
         data = json.load(read_file)
 
         # Assuming the last bid entry is the "accepting" action
-        prediction1, prediction2 = forward_algorithm(data, len(data["bids"]) - 2)
+        n = len(data["bids"]) - 2
+
+        prediction1, prediction2 = forward_backward(data, n)
+
+        prediction1_norm = normalize_list(np.diag(prediction1[n-1]))
+        prediction2_norm = normalize_list(np.diag(prediction2[n-1]))
+
+        df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
+        print()
+        print(">>> FORWARD-BACKWARD:")
+        print(df)
+
+        prediction1, prediction2 = forward_algorithm(data, n)
 
         prediction1_norm = normalize_list(np.diag(prediction1))
         prediction2_norm = normalize_list(np.diag(prediction2))
 
         df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
-
+        print()
+        print(">>> FORWARD:")
         print(df)
+
+
 
 
 def usage():
@@ -208,7 +275,8 @@ def main():
                 print("Invalid file: " + a)
         else:
             assert False, "Unhandled option"
-
+    print()
+    print("finished")
 
 if __name__ == "__main__":
     main()
