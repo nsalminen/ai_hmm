@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Dec 29 22:05:40 2018
+HMM training and testing for strategy prediction
 
-@author: Emma
+@author: Emma den Brok, Olivier Dikken and Nels Numan
 """
 
+import getopt
 import json
 import os
+import sys
+
 import numpy as np
 import pandas as pd
-import sys, getopt
-import matplotlib.pyplot as plt
 
 # the names of all the issues in the domain for later use
 issues = ["Fruit", "Juice", "Topping1", "Topping2"]
@@ -153,6 +154,7 @@ def forward_algorithm(data, i):
     sensor_matrix1 = make_sensor_matrix(move1)
     sensor_matrix2 = make_sensor_matrix(move2)
 
+    # If we haven't reached the "first" value yet, recursively determine the value. Otherwise,
     if i > 2:
         fa_rec_result1, fa_rec_result2 = forward_algorithm(data, i - 1)
         fa_result1 = np.dot(transition_model.values.transpose(), sensor_matrix1)
@@ -165,12 +167,11 @@ def forward_algorithm(data, i):
     return fa_result1, fa_result2
 
 
-
 def forward_backward(data, t):
-    #get pref profiles
+    # Get pref profiles
     pref1 = data["Utility1"]
     pref2 = data["Utility2"]
-    #init fv arrays per agent
+    # Init fv arrays per agent
     sv_1 = []
     sv_2 = []
     fv_1 = []
@@ -180,13 +181,13 @@ def forward_backward(data, t):
         fv_2.append(0)
         sv_1.append(0)
         sv_2.append(0)
-    #set prior
+    # Set prior
     fv_1[0] = np.identity(4) * 0.25
     fv_2[0] = np.identity(4) * 0.25
     b_1 = np.ones(4)
     b_2 = np.ones(4)
 
-    #fw loop (store fv along the way to use in bw)
+    # Fw loop (store fv along the way to use in bw)
     for i in range(1, t):
         current_round = data["bids"][i]
         prev_round = data["bids"][i - 1]
@@ -200,12 +201,12 @@ def forward_backward(data, t):
         fv_1[i] = sensor_matrix1 * transition_model.values.transpose() * fv_1[i - 1]
         fv_2[i] = sensor_matrix2 * transition_model.values.transpose() * fv_2[i - 1]
 
-    #bw loop, store smootherd estimates in sv_[agent id]
-    for i in range(t-1, 0, -1):
+    # Bw loop, store smootherd estimates in sv_[agent id]
+    for i in range(t - 1, 0, -1):
         sv_1[i] = fv_1[i] * b_1
         sv_2[i] = fv_2[i] * b_2
         current_round = data["bids"][i]
-        prev_round = data["bids"][i-1]
+        prev_round = data["bids"][i - 1]
         move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
                               pref1, pref2))
         move2 = (type_of_move(current_round["agent2"], prev_round["agent2"],
@@ -234,8 +235,8 @@ def test(file_name):
 
         prediction1, prediction2 = forward_backward(data, n)
 
-        prediction1_norm = normalize_list(np.diag(prediction1[n-1]))
-        prediction2_norm = normalize_list(np.diag(prediction2[n-1]))
+        prediction1_norm = normalize_list(np.diag(prediction1[n - 1]))
+        prediction2_norm = normalize_list(np.diag(prediction2[n - 1]))
 
         df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
         print()
@@ -251,8 +252,6 @@ def test(file_name):
         print()
         print(">>> FORWARD:")
         print(df)
-
-
 
 
 def usage():
@@ -282,6 +281,7 @@ def main():
             assert False, "Unhandled option"
     print()
     print("finished")
+
 
 if __name__ == "__main__":
     main()
