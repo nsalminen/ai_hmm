@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
- # If we haven't reached the "first" value yet, recursively determine the value. Otherwise,
+HMM for training and testing to determine agent strategies.
 
 @author: Emma den Brok, Olivier Dikken and Nels Numan
 """
@@ -10,7 +10,6 @@ import os
 import numpy as np
 import pandas as pd
 import sys, getopt
-import matplotlib.pyplot as plt
 
 # the names of all the issues in the domain for later use
 issues = ["Fruit", "Juice", "Topping1", "Topping2"]
@@ -63,7 +62,7 @@ def type_of_move(bid, prevbid, pref1, pref2):
     delta1 = calc_util(bid, pref1) - calc_util(prevbid, pref1)
     delta2 = calc_util(bid, pref2) - calc_util(prevbid, pref2)
 
-    #return name of move type
+    # return name of move type
     if delta1 < 0 and delta2 >= 0:
         return "concession"
     elif delta1 >= 0 and delta2 > 0:
@@ -136,7 +135,7 @@ def train():
     sensor_model.loc["St"] = tempSt.values
     sensor_model.loc["Sr"] = tempSr.values
 
-    #save trained model in csv
+    # save trained model in csv
     sensor_model.to_csv("sensor_model.csv")
 
 
@@ -150,6 +149,7 @@ def make_sensor_matrix(move_type):
     sensor_matrix = np.zeros((4, 4), float)
     np.fill_diagonal(sensor_matrix, sensor_model[['P(' + move_type + ')']].values)
     return sensor_matrix
+
 
 # recursive forward algorithm
 def forward_algorithm(data, i):
@@ -167,7 +167,7 @@ def forward_algorithm(data, i):
     sensor_matrix1 = make_sensor_matrix(move1)
     sensor_matrix2 = make_sensor_matrix(move2)
 
-     # If we haven't reached the "first" value yet, recursively determine the value. Otherwise,
+    # If we haven't reached the "first" value yet, recursively determine the value. Otherwise, return a 0.25 matrix.
     if i > 2:
         fa_rec_result1, fa_rec_result2 = forward_algorithm(data, i - 1)
         fa_result1 = np.dot(transition_model.values.transpose(), sensor_matrix1)
@@ -180,32 +180,32 @@ def forward_algorithm(data, i):
     return fa_result1, fa_result2
 
 
-#linear time forward-backward algorithm storing intermediate forward values in a list to use for the backwards smoothing
+# linear time forward-backward algorithm storing intermediate forward values in a list to use for the backwards smoothing
 def forward_backward(data, t):
-    #get pref profiles
+    # get pref profiles
     pref1 = data["Utility1"]
     pref2 = data["Utility2"]
-    #init fv arrays per agent
-    #init smoothed values
+    # init fv arrays per agent
+    # init smoothed values
     sv_1 = []
     sv_2 = []
-    #init forward value arrays
+    # init forward value arrays
     fv_1 = []
     fv_2 = []
 
-    #prefill the forward value and smoothed value arrays
+    # prefill the forward value and smoothed value arrays
     for i in range(t):
         fv_1.append(0)
         fv_2.append(0)
         sv_1.append(0)
         sv_2.append(0)
-    #set prior, give each equal chance
+    # set prior, give each equal chance
     fv_1[0] = np.identity(4) * 0.25
     fv_2[0] = np.identity(4) * 0.25
     b_1 = np.ones(4)
     b_2 = np.ones(4)
 
-    #fw loop (store fv along the way to use in bw)
+    # fw loop (store fv along the way to use in bw)
     for i in range(1, t):
         current_round = data["bids"][i]
         prev_round = data["bids"][i - 1]
@@ -219,20 +219,20 @@ def forward_backward(data, t):
         fv_1[i] = sensor_matrix1 * transition_model.values.transpose() * fv_1[i - 1]
         fv_2[i] = sensor_matrix2 * transition_model.values.transpose() * fv_2[i - 1]
 
-    #bw loop, store smootherd estimates in sv_[agent id]
-    for i in range(t-1, 0, -1):
-        #compute and store the smoothed values
+    # bw loop, store smootherd estimates in sv_[agent id]
+    for i in range(t - 1, 0, -1):
+        # compute and store the smoothed values
         sv_1[i] = fv_1[i] * b_1
         sv_2[i] = fv_2[i] * b_2
         current_round = data["bids"][i]
-        prev_round = data["bids"][i-1]
+        prev_round = data["bids"][i - 1]
         move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
                               pref1, pref2))
         move2 = (type_of_move(current_round["agent2"], prev_round["agent2"],
                               pref2, pref1))
         sensor_matrix1 = make_sensor_matrix(move1)
         sensor_matrix2 = make_sensor_matrix(move2)
-        #update the backward message vector
+        # update the backward message vector
         b_1 = transition_model.values * sensor_matrix1 * b_1
         b_2 = transition_model.values * sensor_matrix2 * b_2
 
@@ -250,24 +250,23 @@ def test(file_name):
     with open(("./logs/test_logs/%s" % file_name), "r") as read_file:
         data = json.load(read_file)
 
-        # Assuming the last bid entry is the "accepting" action
+        # assuming the last bid entry is the "accepting" action
         n = len(data["bids"]) - 2
 
-
-        #run fw-bw algorithm
+        # run fw-bw algorithm
         prediction1, prediction2 = forward_backward(data, n)
 
-        #normalize results
-        prediction1_norm = normalize_list(np.diag(prediction1[n-1]))
-        prediction2_norm = normalize_list(np.diag(prediction2[n-1]))
+        # normalize results
+        prediction1_norm = normalize_list(np.diag(prediction1[n - 1]))
+        prediction2_norm = normalize_list(np.diag(prediction2[n - 1]))
 
-        #print results
+        # print results
         df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
         print()
         print(">>> FORWARD-BACKWARD:")
         print(df)
 
-        #run fw algorithm
+        # run fw algorithm
         prediction1, prediction2 = forward_algorithm(data, n)
 
         # normalize results
@@ -281,8 +280,7 @@ def test(file_name):
         print(df)
 
 
-
-#help function
+# help function
 def usage():
     print("usage: python3 hmm.py [--train | --test filename | --help]")
 
@@ -310,6 +308,7 @@ def main():
             assert False, "Unhandled option"
     print()
     print("finished")
+
 
 if __name__ == "__main__":
     main()
