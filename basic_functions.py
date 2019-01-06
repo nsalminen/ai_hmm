@@ -10,6 +10,7 @@ import os
 import numpy as np
 import pandas as pd
 import sys, getopt
+import matplotlib.pyplot as plt
 
 # the names of all the issues in the domain for later use
 issues = ["Fruit", "Juice", "Topping1", "Topping2"]
@@ -154,11 +155,14 @@ def forward_algorithm(data, i):
 
     if i > 2:
         fa_rec_result1, fa_rec_result2 = forward_algorithm(data, i - 1)
-        fa_result1 = np.linalg.multi_dot([sensor_matrix1, transition_model.values.transpose(), fa_rec_result1])
-        fa_result2 = np.linalg.multi_dot([sensor_matrix2, transition_model.values.transpose(), fa_rec_result2])
-        return fa_result1, fa_result2
+        fa_result1 = np.dot(transition_model.values.transpose(), sensor_matrix1)
+        fa_result1 = np.dot(fa_result1, fa_rec_result1)
+        fa_result2 = np.dot(transition_model.values.transpose(), sensor_matrix2)
+        fa_result2 = np.dot(fa_result2, fa_rec_result2)
     else:
-        return np.identity(4), np.identity(4)
+        fa_result1 = np.matrix([[0.25], [0.25], [0.25], [0.25]])
+        fa_result2 = fa_result1
+    return fa_result1, fa_result2
 
 
 
@@ -177,8 +181,8 @@ def forward_backward(data, t):
         sv_1.append(0)
         sv_2.append(0)
     #set prior
-    fv_1[0] = np.identity(4)
-    fv_2[0] = np.identity(4)
+    fv_1[0] = np.identity(4) * 0.25
+    fv_2[0] = np.identity(4) * 0.25
     b_1 = np.ones(4)
     b_2 = np.ones(4)
 
@@ -192,23 +196,24 @@ def forward_backward(data, t):
                               pref2, pref1))
         sensor_matrix1 = make_sensor_matrix(move1)
         sensor_matrix2 = make_sensor_matrix(move2)
-        fv_1[i] = np.linalg.multi_dot([sensor_matrix1, transition_model.values.transpose(), fv_1[i-1]])
-        fv_2[i] = np.linalg.multi_dot([sensor_matrix2, transition_model.values.transpose(), fv_2[i-1]])
+
+        fv_1[i] = sensor_matrix1 * transition_model.values.transpose() * fv_1[i - 1]
+        fv_2[i] = sensor_matrix2 * transition_model.values.transpose() * fv_2[i - 1]
 
     #bw loop, store smootherd estimates in sv_[agent id]
     for i in range(t-1, 0, -1):
         sv_1[i] = fv_1[i] * b_1
         sv_2[i] = fv_2[i] * b_2
         current_round = data["bids"][i]
-        prev_round = data["bids"][i - 1]
+        prev_round = data["bids"][i-1]
         move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
                               pref1, pref2))
         move2 = (type_of_move(current_round["agent2"], prev_round["agent2"],
                               pref2, pref1))
         sensor_matrix1 = make_sensor_matrix(move1)
         sensor_matrix2 = make_sensor_matrix(move2)
-        b_1 = np.linalg.multi_dot([transition_model, sensor_matrix1, b_1])
-        b_2 = np.linalg.multi_dot([transition_model, sensor_matrix2, b_2])
+        b_1 = transition_model.values * sensor_matrix1 * b_1
+        b_2 = transition_model.values * sensor_matrix2 * b_2
 
     return sv_1, sv_2
 
@@ -239,8 +244,8 @@ def test(file_name):
 
         prediction1, prediction2 = forward_algorithm(data, n)
 
-        prediction1_norm = normalize_list(np.diag(prediction1))
-        prediction2_norm = normalize_list(np.diag(prediction2))
+        prediction1_norm = normalize_list(np.asarray(prediction1))
+        prediction2_norm = normalize_list(np.asarray(prediction2))
 
         df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
         print()
@@ -251,7 +256,7 @@ def test(file_name):
 
 
 def usage():
-    print("usage: python3 hmm.py [--train | --test filename | --help]")
+    print("usage: python3basic_functions.py [--train | --test filename | --help]")
 
 
 def main():
