@@ -255,7 +255,7 @@ def test(file_name):
 
 
 def usage():
-    print("usage: python3basic_functions.py [--train | --test filename | --help]")
+    print("usage: python3 hmm.py [--train | --test filename | --help]")
 
 
 def main():
