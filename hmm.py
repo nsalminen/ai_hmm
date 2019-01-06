@@ -1,23 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-HMM training and testing for strategy prediction
+ # If we haven't reached the "first" value yet, recursively determine the value. Otherwise,
 
 @author: Emma den Brok, Olivier Dikken and Nels Numan
 """
 
-import getopt
 import json
 import os
-import sys
-
 import numpy as np
 import pandas as pd
+import sys, getopt
+import matplotlib.pyplot as plt
 
 # the names of all the issues in the domain for later use
 issues = ["Fruit", "Juice", "Topping1", "Topping2"]
 
+# the 4 different strategies for which this hmm predicts the probability
 possible_strategies = ["Conceder", "Hard-headed", "Tit-for-Tat", "Random"]
 
+# the transition model with no probability of switching from one state to another
 transition_model = pd.DataFrame({'St-1': ["Sc", "Sh", "St", "Sr"],
                                  'P(Sc)': [1, 0, 0, 0],
                                  'P(Sh)': [0, 1, 0, 0],
@@ -26,6 +27,7 @@ transition_model = pd.DataFrame({'St-1': ["Sc", "Sh", "St", "Sr"],
 
 transition_model.set_index('St-1', inplace=True)
 
+# initialize the sensor model
 sensor_model = pd.DataFrame({'St': ["Sc", "Sh", "St", "Sr"],
                              'P(concession)': [0, 0, 0, 0],
                              'P(fortunate)': [0, 0, 0, 0],
@@ -35,6 +37,7 @@ sensor_model = pd.DataFrame({'St': ["Sc", "Sh", "St", "Sr"],
 
 sensor_model.set_index('St', inplace=True)
 
+# initialize the move count matrix
 move_count = pd.DataFrame({'Strategy': ["conceder", "hardheaded", "tft", "random"],
                            'concession': [0, 0, 0, 0],
                            'fortunate': [0, 0, 0, 0],
@@ -56,9 +59,11 @@ def calc_util(bid, pref):
 
 
 def type_of_move(bid, prevbid, pref1, pref2):
+    # delta = currentBidUtil - prevBidUtil
     delta1 = calc_util(bid, pref1) - calc_util(prevbid, pref1)
     delta2 = calc_util(bid, pref2) - calc_util(prevbid, pref2)
 
+    #return name of move type
     if delta1 < 0 and delta2 >= 0:
         return "concession"
     elif delta1 >= 0 and delta2 > 0:
@@ -73,6 +78,7 @@ def type_of_move(bid, prevbid, pref1, pref2):
         return "ERROR"
 
 
+# get strategy name from file name for training files
 def return_strategies(filename):
     useful, trash = filename.split(".")
     strategies = useful.split("_")
@@ -90,6 +96,7 @@ def train():
         with open(("./logs/training_logs/%s" % log), "r") as read_file:
             data = json.load(read_file)
 
+        # get the strategy names
         s1, s2 = return_strategies(log)
         # get the preference profiles of both agents
         pref1 = data["Utility1"]
@@ -104,6 +111,7 @@ def train():
                 prev_round = data["bids"][i - 1]
                 move = (type_of_move(current_round["agent1"], prev_round["agent1"],
                                      pref1, pref2))
+                # update the move  count
                 move_count.loc[s1, move] += 1
 
         # moves agent 2 is making
@@ -116,29 +124,34 @@ def train():
 
                 move = (type_of_move(current_round["agent2"], prev_round["agent2"],
                                      pref2, pref1))
+                # update the move count
                 move_count.loc[s2, move] += 1
     tempSc = move_count.loc["conceder"] / move_count.loc["conceder"].sum()
     tempSh = move_count.loc["hardheaded"] / move_count.loc["hardheaded"].sum()
     tempSt = move_count.loc["tft"] / move_count.loc["tft"].sum()
     tempSr = move_count.loc["random"] / move_count.loc["random"].sum()
+    # save move count in sensor model
     sensor_model.loc["Sc"] = tempSc.values
     sensor_model.loc["Sh"] = tempSh.values
     sensor_model.loc["St"] = tempSt.values
     sensor_model.loc["Sr"] = tempSr.values
 
+    #save trained model in csv
     sensor_model.to_csv("sensor_model.csv")
 
 
+# normalize list of values over the sum of all values of the list
 def normalize_list(normalize_list):
     return [float(i) / sum(normalize_list) for i in normalize_list]
 
 
+# return diagonal sensor matrix with as values the sensor_model's values for the specified move type
 def make_sensor_matrix(move_type):
     sensor_matrix = np.zeros((4, 4), float)
     np.fill_diagonal(sensor_matrix, sensor_model[['P(' + move_type + ')']].values)
     return sensor_matrix
 
-
+# recursive forward algorithm
 def forward_algorithm(data, i):
     current_round = data["bids"][i]
     prev_round = data["bids"][i - 1]
@@ -154,7 +167,7 @@ def forward_algorithm(data, i):
     sensor_matrix1 = make_sensor_matrix(move1)
     sensor_matrix2 = make_sensor_matrix(move2)
 
-    # If we haven't reached the "first" value yet, recursively determine the value. Otherwise,
+     # If we haven't reached the "first" value yet, recursively determine the value. Otherwise,
     if i > 2:
         fa_rec_result1, fa_rec_result2 = forward_algorithm(data, i - 1)
         fa_result1 = np.dot(transition_model.values.transpose(), sensor_matrix1)
@@ -167,27 +180,32 @@ def forward_algorithm(data, i):
     return fa_result1, fa_result2
 
 
+#linear time forward-backward algorithm storing intermediate forward values in a list to use for the backwards smoothing
 def forward_backward(data, t):
-    # Get pref profiles
+    #get pref profiles
     pref1 = data["Utility1"]
     pref2 = data["Utility2"]
-    # Init fv arrays per agent
+    #init fv arrays per agent
+    #init smoothed values
     sv_1 = []
     sv_2 = []
+    #init forward value arrays
     fv_1 = []
     fv_2 = []
+
+    #prefill the forward value and smoothed value arrays
     for i in range(t):
         fv_1.append(0)
         fv_2.append(0)
         sv_1.append(0)
         sv_2.append(0)
-    # Set prior
+    #set prior, give each equal chance
     fv_1[0] = np.identity(4) * 0.25
     fv_2[0] = np.identity(4) * 0.25
     b_1 = np.ones(4)
     b_2 = np.ones(4)
 
-    # Fw loop (store fv along the way to use in bw)
+    #fw loop (store fv along the way to use in bw)
     for i in range(1, t):
         current_round = data["bids"][i]
         prev_round = data["bids"][i - 1]
@@ -201,18 +219,20 @@ def forward_backward(data, t):
         fv_1[i] = sensor_matrix1 * transition_model.values.transpose() * fv_1[i - 1]
         fv_2[i] = sensor_matrix2 * transition_model.values.transpose() * fv_2[i - 1]
 
-    # Bw loop, store smootherd estimates in sv_[agent id]
-    for i in range(t - 1, 0, -1):
+    #bw loop, store smootherd estimates in sv_[agent id]
+    for i in range(t-1, 0, -1):
+        #compute and store the smoothed values
         sv_1[i] = fv_1[i] * b_1
         sv_2[i] = fv_2[i] * b_2
         current_round = data["bids"][i]
-        prev_round = data["bids"][i - 1]
+        prev_round = data["bids"][i-1]
         move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
                               pref1, pref2))
         move2 = (type_of_move(current_round["agent2"], prev_round["agent2"],
                               pref2, pref1))
         sensor_matrix1 = make_sensor_matrix(move1)
         sensor_matrix2 = make_sensor_matrix(move2)
+        #update the backward message vector
         b_1 = transition_model.values * sensor_matrix1 * b_1
         b_2 = transition_model.values * sensor_matrix2 * b_2
 
@@ -233,27 +253,36 @@ def test(file_name):
         # Assuming the last bid entry is the "accepting" action
         n = len(data["bids"]) - 2
 
+
+        #run fw-bw algorithm
         prediction1, prediction2 = forward_backward(data, n)
 
-        prediction1_norm = normalize_list(np.diag(prediction1[n - 1]))
-        prediction2_norm = normalize_list(np.diag(prediction2[n - 1]))
+        #normalize results
+        prediction1_norm = normalize_list(np.diag(prediction1[n-1]))
+        prediction2_norm = normalize_list(np.diag(prediction2[n-1]))
 
+        #print results
         df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
         print()
         print(">>> FORWARD-BACKWARD:")
         print(df)
 
+        #run fw algorithm
         prediction1, prediction2 = forward_algorithm(data, n)
 
+        # normalize results
         prediction1_norm = normalize_list(np.asarray(prediction1))
         prediction2_norm = normalize_list(np.asarray(prediction2))
 
+        # print results
         df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
         print()
         print(">>> FORWARD:")
         print(df)
 
 
+
+#help function
 def usage():
     print("usage: python3 hmm.py [--train | --test filename | --help]")
 
@@ -281,7 +310,6 @@ def main():
             assert False, "Unhandled option"
     print()
     print("finished")
-
 
 if __name__ == "__main__":
     main()
