@@ -181,8 +181,8 @@ def forward_backward(data, t):
         sv_1.append(0)
         sv_2.append(0)
     #set prior
-    fv_1[0] = np.identity(4)
-    fv_2[0] = np.identity(4)
+    fv_1[0] = np.identity(4) * 0.25
+    fv_2[0] = np.identity(4) * 0.25
     b_1 = np.ones(4)
     b_2 = np.ones(4)
 
@@ -232,51 +232,6 @@ def test(file_name):
         # Assuming the last bid entry is the "accepting" action
         n = len(data["bids"]) - 2
 
-        # prediction1, prediction2 = forward_backward(data, 2)
-        # prediction1_norm = normalize_list(np.diag(prediction1[1]))
-        # prediction2_norm = normalize_list(np.diag(prediction2[1]))
-        #
-        # df = pd.DataFrame( columns = ["Conceder", "Hard-headed", "Tit-for-Tat", "Random", "Conceder_fb", "Hard-headed_fb", "Tit-for-Tat_fb", "Random_fb"])
-        # df2 = pd.DataFrame(columns = possible_strategies)
-        #
-        #
-        # for i in range(3, n):
-        #     prediction1, prediction2 = forward_algorithm(data, i)
-        #     prediction1_norm = normalize_list(np.diag(prediction1))
-        #     prediction2_norm = normalize_list(np.diag(prediction2))
-        #
-        #     df_new = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
-        #
-        #     appendedpred = prediction1_norm
-        #
-        #
-        #     # df = pd.concat([df, df_new2])
-        #
-        #     prediction1, prediction2 = forward_backward(data, i)
-        #     prediction1_norm = normalize_list(np.diag(prediction1[i-1]))
-        #     prediction2_norm = normalize_list(np.diag(prediction2[i-1]))
-
-            # df_new = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
-
-            # appendedpred = appendedpred + prediction1_norm
-            #
-            # df_new2 = pd.DataFrame([appendedpred],
-            #                        columns=["Conceder", "Hard-headed", "Tit-for-Tat", "Random", "Conceder_fb",
-            #                                 "Hard-headed_fb", "Tit-for-Tat_fb", "Random_fb"])
-            #
-            # df2 = pd.concat([df2, df_new2])
-
-
-        print()
-        # print(">>> FORWARD-BACKWARD given " + str(i + 1) + " round of bids :")
-        # print(df)
-
-        # df.index = range(n - 3)
-        # df.plot()
-        # df2.index = range(n - 3)
-        # df2.plot(style=['-',':','-',':','-',':','-',':'], color=['blue', 'blue', 'red', 'red', 'yellow','yellow', 'green', 'green'])
-        # plt.show()
-
         prediction1, prediction2 = forward_backward(data, n)
 
         prediction1_norm = normalize_list(np.diag(prediction1[n-1]))
@@ -289,8 +244,8 @@ def test(file_name):
 
         prediction1, prediction2 = forward_algorithm(data, n)
 
-        prediction1_norm = normalize_list(np.diag(prediction1))
-        prediction2_norm = normalize_list(np.diag(prediction2))
+        prediction1_norm = normalize_list(np.asarray(prediction1))
+        prediction2_norm = normalize_list(np.asarray(prediction2))
 
         df = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
         print()
@@ -301,12 +256,10 @@ def test(file_name):
 
 
 def usage():
-    print("usage: python3 hmm.py [--train | --test filename | --help]")
+    print("usage: python3basic_functions.py [--train | --test filename | --help]")
 
 
 def main():
-    test("test7.json")
-    sys.exit()
     try:
         opts, args = getopt.getopt(sys.argv[1:], "ho:v", ["help", "train", "test="])
     except getopt.GetoptError as err:
