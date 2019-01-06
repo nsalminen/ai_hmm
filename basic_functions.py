@@ -10,6 +10,7 @@ import os
 import numpy as np
 import pandas as pd
 import sys, getopt
+import matplotlib.pyplot as plt
 
 # the names of all the issues in the domain for later use
 issues = ["Fruit", "Juice", "Topping1", "Topping2"]
@@ -154,11 +155,14 @@ def forward_algorithm(data, i):
 
     if i > 2:
         fa_rec_result1, fa_rec_result2 = forward_algorithm(data, i - 1)
-        fa_result1 = np.linalg.multi_dot([sensor_matrix1, transition_model.values.transpose(), fa_rec_result1])
-        fa_result2 = np.linalg.multi_dot([sensor_matrix2, transition_model.values.transpose(), fa_rec_result2])
-        return fa_result1, fa_result2
+        fa_result1 = np.dot(transition_model.values.transpose(), sensor_matrix1)
+        fa_result1 = np.dot(fa_result1, fa_rec_result1)
+        fa_result2 = np.dot(transition_model.values.transpose(), sensor_matrix2)
+        fa_result2 = np.dot(fa_result2, fa_rec_result2)
     else:
-        return np.identity(4), np.identity(4)
+        fa_result1 = np.matrix([[0.25], [0.25], [0.25], [0.25]])
+        fa_result2 = fa_result1
+    return fa_result1, fa_result2
 
 
 
@@ -192,23 +196,24 @@ def forward_backward(data, t):
                               pref2, pref1))
         sensor_matrix1 = make_sensor_matrix(move1)
         sensor_matrix2 = make_sensor_matrix(move2)
-        fv_1[i] = np.linalg.multi_dot([sensor_matrix1, transition_model.values.transpose(), fv_1[i-1]])
-        fv_2[i] = np.linalg.multi_dot([sensor_matrix2, transition_model.values.transpose(), fv_2[i-1]])
+
+        fv_1[i] = sensor_matrix1 * transition_model.values.transpose() * fv_1[i - 1]
+        fv_2[i] = sensor_matrix2 * transition_model.values.transpose() * fv_2[i - 1]
 
     #bw loop, store smootherd estimates in sv_[agent id]
     for i in range(t-1, 0, -1):
         sv_1[i] = fv_1[i] * b_1
         sv_2[i] = fv_2[i] * b_2
         current_round = data["bids"][i]
-        prev_round = data["bids"][i - 1]
+        prev_round = data["bids"][i-1]
         move1 = (type_of_move(current_round["agent1"], prev_round["agent1"],
                               pref1, pref2))
         move2 = (type_of_move(current_round["agent2"], prev_round["agent2"],
                               pref2, pref1))
         sensor_matrix1 = make_sensor_matrix(move1)
         sensor_matrix2 = make_sensor_matrix(move2)
-        b_1 = np.linalg.multi_dot([transition_model, sensor_matrix1, b_1])
-        b_2 = np.linalg.multi_dot([transition_model, sensor_matrix2, b_2])
+        b_1 = transition_model.values * sensor_matrix1 * b_1
+        b_2 = transition_model.values * sensor_matrix2 * b_2
 
     return sv_1, sv_2
 
@@ -226,6 +231,51 @@ def test(file_name):
 
         # Assuming the last bid entry is the "accepting" action
         n = len(data["bids"]) - 2
+
+        # prediction1, prediction2 = forward_backward(data, 2)
+        # prediction1_norm = normalize_list(np.diag(prediction1[1]))
+        # prediction2_norm = normalize_list(np.diag(prediction2[1]))
+        #
+        # df = pd.DataFrame( columns = ["Conceder", "Hard-headed", "Tit-for-Tat", "Random", "Conceder_fb", "Hard-headed_fb", "Tit-for-Tat_fb", "Random_fb"])
+        # df2 = pd.DataFrame(columns = possible_strategies)
+        #
+        #
+        # for i in range(3, n):
+        #     prediction1, prediction2 = forward_algorithm(data, i)
+        #     prediction1_norm = normalize_list(np.diag(prediction1))
+        #     prediction2_norm = normalize_list(np.diag(prediction2))
+        #
+        #     df_new = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
+        #
+        #     appendedpred = prediction1_norm
+        #
+        #
+        #     # df = pd.concat([df, df_new2])
+        #
+        #     prediction1, prediction2 = forward_backward(data, i)
+        #     prediction1_norm = normalize_list(np.diag(prediction1[i-1]))
+        #     prediction2_norm = normalize_list(np.diag(prediction2[i-1]))
+
+            # df_new = pd.DataFrame({'Agent 1': prediction1_norm, 'Agent 2': prediction2_norm}, index=possible_strategies)
+
+            # appendedpred = appendedpred + prediction1_norm
+            #
+            # df_new2 = pd.DataFrame([appendedpred],
+            #                        columns=["Conceder", "Hard-headed", "Tit-for-Tat", "Random", "Conceder_fb",
+            #                                 "Hard-headed_fb", "Tit-for-Tat_fb", "Random_fb"])
+            #
+            # df2 = pd.concat([df2, df_new2])
+
+
+        print()
+        # print(">>> FORWARD-BACKWARD given " + str(i + 1) + " round of bids :")
+        # print(df)
+
+        # df.index = range(n - 3)
+        # df.plot()
+        # df2.index = range(n - 3)
+        # df2.plot(style=['-',':','-',':','-',':','-',':'], color=['blue', 'blue', 'red', 'red', 'yellow','yellow', 'green', 'green'])
+        # plt.show()
 
         prediction1, prediction2 = forward_backward(data, n)
 
@@ -255,6 +305,8 @@ def usage():
 
 
 def main():
+    test("test7.json")
+    sys.exit()
     try:
         opts, args = getopt.getopt(sys.argv[1:], "ho:v", ["help", "train", "test="])
     except getopt.GetoptError as err:
